@@ -424,8 +424,7 @@ void convFreq2(double *out, double *in, MyData* myData){
 	for (n=0; n<myData->L;n++){
 		out[n] = myData->interBuffer[n];
 	}
-}
-
+} 
 
 void convFreq(double *out, double *in, MyData* myData){
 	memset(myData->interBufferReal, 0, myData->sizeFFT);
@@ -561,7 +560,6 @@ int main( int argc, char *argv[] )
 	
 	double impRep[fileSize];
 	int sizeFFT = get_nextpow2(fileSize+bufferFrames-1);
-	//int sizeFFT = get_nextpow2(10000);
 	
 	double impRepReal[sizeFFT];
 	double impRepIm[sizeFFT];
@@ -574,7 +572,8 @@ int main( int argc, char *argv[] )
 
 	myData.sizeFFT = sizeFFT;
 	myData.impRep = impRep;
-	fftr(impRepReal,impRepIm,myData.sizeFFT);
+	memcpy(impRepReal, impRep, fileSize);
+	fft(impRepReal,impRepIm,myData.sizeFFT);
 	myData.M = fileSize;
 	myData.L = bufferFrames;
 	myData.bufferMax = myData.M+myData.L-1;
@@ -582,6 +581,23 @@ int main( int argc, char *argv[] )
 	myData.fs = fs;
 	myData.impRepReal = impRepReal;
 	myData.impRepIm = impRepIm;
+	
+	int k;
+	printf("impRep : [");
+	for (k = 0; k<300; k++){
+		printf("%f, ",impRep[k]);
+	}
+	
+	printf("...]\n\nimpRepReal : [");
+	for (k = 0; k<300; k++){
+		printf("%f, ",impRepReal[k]);
+	}
+	
+	printf("...]\n\nimpRepIm : [");
+	for (k = 0; k<300; k++){
+		printf("%f, ",impRepIm[k]);
+	}
+	printf("...]\n\n");
 	
 	double interBuffer[sizeFFT];
 	myData.interBuffer = interBuffer;
@@ -593,7 +609,7 @@ int main( int argc, char *argv[] )
 	myData.interBufferIm = interBufferIm;
 	
 	double tempsMax = (double)bufferFrames/(double)fs;
-	printf("Fréquence : %d, Temps max : %f\n\n",fs,tempsMax);
+	printf("Fréquence : %d, Temps max : %f, sizeFFT : %d\n\n",fs,tempsMax,sizeFFT);
 	//fin
 	
   //options.flags |= RTAUDIO_NONINTERLEAVED;
