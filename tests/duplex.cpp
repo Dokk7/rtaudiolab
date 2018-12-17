@@ -38,15 +38,19 @@ typedef double MY_TYPE;
 
 struct MyData{
 
-double* impRep;   	//réponse impulsionelle
-double* interBuffer;	//buffer intermédiaire, résultat de la convolution
-int M;							//M taille de impRep
-int L;							//L taille du buffer
-double* impRepFreq; //fft(réponse impulsionelle)
-const int fft_m = 512;				//argument de la fft
-int bufferMax;			//taille maximale de la convolution
-double tempsMax;		//temps maximal de calcul
-int fs;							//fréquence
+double* impRep;   				//réponse impulsionelle
+double* interBuffer;			//buffer intermédiaire, résultat de la convolution
+int M;										//M taille de impRep
+int L;										//L taille du buffer
+int bufferMax;						//taille maximale de la convolution
+double tempsMax;					//temps maximal de calcul
+int fs;										//fréquence
+double* impRepReal;				//réponse impulsionelle fréquentielle réelle
+double* impRepIm;					//réponse impulsionelle fréquentielle imaginaire
+double* interBufferReal;	//buffer intermédiaire, résultat de la convolution fréquentielle
+double* interBufferIm;		//buffer intermédiaire, résultat de la convolution fréquentielle
+int sizeFFT;						//taille de la fft
+int convChoice;						//0=none, 1=temp, 2=freq
 
 };
 
@@ -353,10 +357,10 @@ void usage( void ) {
   exit( 0 );
 }
 
-void nothingDone( void *outputBuffer, void *inputBuffer, MyData* myData){
+void nothingDone( double *out, double *in, MyData* myData){
 	int i;
   for(i=0;i<myData->L-1;i++){
-  	((double*)outputBuffer)[i] = ((double*)inputBuffer)[i];
+  	out[i] = in[i];
   }
 }
 
@@ -397,8 +401,56 @@ void convTemps( double *out, double *in, MyData* myData){
   }
 }
 
-void convFreq( void *outputBuffer, void *inputBuffer, MyData* myData){
+void convFreq2(double *out, double *in, MyData* myData){
+	myData->sizeFFT = get_nextpow2(myData->bufferMax);
+	memcpy(myData->interBufferReal,in,myData->L);
+	fftr(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
 	
+	int n;
+	for (n=0; n<myData->sizeFFT - myData->L;n++){
+		myData->interBuffer[n] = myData->interBuffer[n+myData->L];
+	}
+	for(n=myData->sizeFFT - myData->L;n<myData->sizeFFT;n++){
+		myData->interBuffer[n] = 0;
+	}
+	for (n=0; n<myData->sizeFFT; n++){
+		myData->interBufferReal[n] = myData->interBufferReal[n]*myData->impRepReal[n] + myData->interBufferIm[n]*myData->impRepIm[n];
+		myData->interBufferIm[n] = myData->interBufferReal[n]*myData->impRepIm[n] + myData->interBufferIm[n]*myData->impRepReal[n];
+	}
+	ifft(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
+	for (n=0; n<myData->sizeFFT;n++){
+		myData->interBuffer[n] += myData->interBufferReal[n];
+	}
+	for (n=0; n<myData->L;n++){
+		out[n] = myData->interBuffer[n];
+	}
+}
+
+
+void convFreq(double *out, double *in, MyData* myData){
+	memset(myData->interBufferReal, 0, myData->sizeFFT);
+	memset(myData->interBufferIm, 0, myData->sizeFFT);
+	memcpy(myData->interBufferReal,in,myData->L);
+	fftr(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
+	
+	int n;
+	for (n=0; n<myData->sizeFFT; n++){
+		if (n<myData->sizeFFT - myData->L){
+			myData->interBuffer[n] = myData->interBuffer[n+myData->L];
+		}
+		else{
+			myData->interBuffer[n] = 0;
+		}
+		myData->interBufferReal[n] = myData->interBufferReal[n]*myData->impRepReal[n] - myData->interBufferIm[n]*myData->impRepIm[n];
+		myData->interBufferIm[n] = myData->interBufferReal[n]*myData->impRepIm[n] + myData->interBufferIm[n]*myData->impRepReal[n];
+	}
+	ifft(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
+	for (n=0; n<myData->sizeFFT;n++){
+		myData->interBuffer[n] += myData->interBufferReal[n];
+	}
+	for (n=0; n<myData->L;n++){
+		out[n] = myData->interBuffer[n];
+	}
 }
 
 int inout( void *outputBuffer, void *inputBuffer, unsigned int /*nBufferFrames*/,
@@ -416,19 +468,28 @@ int inout( void *outputBuffer, void *inputBuffer, unsigned int /*nBufferFrames*/
 
   MyData* myData = (MyData *) data;
   
-	//nothingDone(outputBuffer, inputBuffer, myData);
-  convTemps(out, in, myData);
-  //convFreq(outputBuffer, inputBuffer, myData);
+  switch(myData->convChoice)
+	{
+    case 0:
+      nothingDone(out, in, myData);
+      break;
+    case 1:
+      convTemps(out, in, myData);
+      break;
+   	case 2:
+   		convFreq(out, in, myData);
+   		break;
+    default :
+        printf("Unknown Error !!\n");
+	}
   
   time = get_process_time()-time;
   
   if(time > myData->tempsMax){
-  	/*myData->M -=500;
-  	myData->bufferMax = myData->M+myData->L-1;*/
   	myData->bufferMax -= 500;
  		printf("Time too long, new bufferSize : %d, ",myData->bufferMax);
+  	printf("Time : %f\n",time);
   }
-  printf("Time : %f\n",time);
   outputBuffer = out;
   return 0;
 }
@@ -461,7 +522,7 @@ int main( int argc, char *argv[] )
   adac.showWarnings( true );
 
   // Set the same number of channels for both input and output.
-  unsigned int bufferFrames = 128;
+  unsigned int bufferFrames = 512;
   RtAudio::StreamParameters iParams, oParams;
   iParams.deviceId = iDevice;
   iParams.nChannels = channels;
@@ -478,34 +539,58 @@ int main( int argc, char *argv[] )
   RtAudio::StreamOptions options;
   
   //ici on prend la réponse impulsionelle du filtre
+  
+  MyData myData;
+  myData.convChoice = -1;
+  
+  while(myData.convChoice != 0 && myData.convChoice != 1 && myData.convChoice != 2){
+		printf("Choose convolution : 0=none, 1=temp, 2=freq\n : ");
+		scanf("%d",&myData.convChoice);
+		printf("\n\n");
+	}
+  
 	FILE* impRepFile;
 	impRepFile = fopen("../../c/impres", "rb");
 	
 	fseek(impRepFile, 0, SEEK_END); // seek to end of file
 	long unsigned int fileSize = ftell(impRepFile)/sizeof(double); // nombre d'elements de la RI
 	
+	fileSize = fileSize/2;
+	
 	fseek(impRepFile, 0, SEEK_SET); // seek back to beginning of file
 	
 	double impRep[fileSize];
-	double impRepFreq[fileSize];
+	int sizeFFT = get_nextpow2(fileSize+bufferFrames-1);
+	//int sizeFFT = get_nextpow2(10000);
+	
+	double impRepReal[sizeFFT];
+	double impRepIm[sizeFFT];
+	memcpy(impRepReal,impRep,fileSize);
 	
 	fread(impRep,sizeof(double), fileSize, impRepFile);
 	printf("Taille du fichier %lu\n\n",fileSize);
 	
 	fclose(impRepFile);
 
-	MyData myData;
+	myData.sizeFFT = sizeFFT;
 	myData.impRep = impRep;
-	//fft(impRep,impRepFreq,myData.fft_m);
-	myData.impRepFreq = impRepFreq;
+	fftr(impRepReal,impRepIm,myData.sizeFFT);
 	myData.M = fileSize;
 	myData.L = bufferFrames;
 	myData.bufferMax = myData.M+myData.L-1;
 	myData.tempsMax = (double)bufferFrames/(double)fs;
 	myData.fs = fs;
+	myData.impRepReal = impRepReal;
+	myData.impRepIm = impRepIm;
 	
-	double interBuffer[myData.M+myData.L-1];
+	double interBuffer[sizeFFT];
 	myData.interBuffer = interBuffer;
+	
+	double interBufferReal[sizeFFT];
+	myData.interBufferReal = interBufferReal;
+	
+	double interBufferIm[sizeFFT];
+	myData.interBufferIm = interBufferIm;
 	
 	double tempsMax = (double)bufferFrames/(double)fs;
 	printf("Fréquence : %d, Temps max : %f\n\n",fs,tempsMax);
@@ -528,6 +613,7 @@ int main( int argc, char *argv[] )
     adac.startStream();
     char input;
     std::cout << "\nRunning ... press <enter> to quit (buffer frames = " << bufferFrames << ").\n";
+    std::cin.get(input);
     std::cin.get(input);
     // Stop the stream.
     adac.stopStream();
