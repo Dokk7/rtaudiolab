@@ -363,36 +363,37 @@ void nothingDone( void *outputBuffer, void *inputBuffer, MyData* myData){
 void convTemps( double *out, double *in, MyData* myData){
 
 	int n;
-	for (n=0; n< myData->M -1; n++){
-		//décalage de interBuffer
-		myData->interBuffer[n] = myData->interBuffer[n+myData->L];
-	}
-	for (n=myData->M -1; n< myData->L + myData->M -1; n++){
-		//virer la fin de interBuffer
-		myData->interBuffer[n] = 0;
-	}
-	
-  for (n = 0; n < myData->bufferMax; n++)
+  for (n = 0; n< myData->L + myData->M -1; n++)
   {
-    int kmin, kmax, k;
-    //kmin = premier indice pour lequel le produit dans la convolution est non nul
-    //kmax = dernier indice pour lequel le produit dans la convolution est non nul
-    //k = indice de la somme
+  	if (n< myData->M -1){
+			//décalage de interBuffer
+			myData->interBuffer[n] = myData->interBuffer[n+myData->L];
+		}
+		else{
+			//retirer la fin de interBuffer
+			myData->interBuffer[n] = 0;
+		}
+		
+  	if (n < myData->bufferMax){
+    	int kmin, kmax, k;
+    	//kmin = premier indice pour lequel le produit dans la convolution est non nul
+    	//kmax = dernier indice pour lequel le produit dans la convolution est non nul
+    	//k = indice de la somme
 
-    kmin = (n >= myData->M - 1) ? n - (myData->M - 1) : 0;  //kmin = 0 ou kmin < 512
-    kmax = (n < myData->L - 1) ? n : myData->L - 1;					//kmax < 512 ou kmax = 512
+    	kmin = (n >= myData->M - 1) ? n - (myData->M - 1) : 0;  //kmin = 0 ou kmin < 512
+    	kmax = (n < myData->L - 1) ? n : myData->L - 1;					//kmax < 512 ou kmax = 512
 
-		double tmp;
-		tmp = 0;
-    for (k = kmin; k <= kmax; k++)
-    {
-      tmp  += in[k]* myData->impRep[n - k];
+			double tmp;
+			tmp = 0;
+    	for (k = kmin; k <= kmax; k++)
+    	{
+      	tmp  += in[k]* myData->impRep[n - k];
+    	}
+    	myData->interBuffer[n] += tmp;
+    	if(n<myData->L){
+    		out[n] = myData->interBuffer[n];
+    	}
     }
-    myData->interBuffer[n] += tmp;
-  }
-  
-  for(n=0; n<myData->L; n++){
-  	out[n] = myData->interBuffer[n];
   }
 }
 
