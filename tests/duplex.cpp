@@ -360,8 +360,18 @@ void nothingDone( void *outputBuffer, void *inputBuffer, MyData* myData){
   }
 }
 
-void convTemps( void *outputBuffer, void *inputBuffer, MyData* myData){
+void convTemps( double *out, double *in, MyData* myData){
+
 	int n;
+	for (n=0; n< myData->M -1; n++){
+		//décalage de interBuffer
+		myData->interBuffer[n] = myData->interBuffer[n+myData->L];
+	}
+	for (n=myData->M -1; n< myData->L + myData->M -1; n++){
+		//virer la fin de interBuffer
+		myData->interBuffer[n] = 0;
+	}
+	
   for (n = 0; n < myData->bufferMax; n++)
   {
     int kmin, kmax, k;
@@ -372,23 +382,21 @@ void convTemps( void *outputBuffer, void *inputBuffer, MyData* myData){
     kmin = (n >= myData->M - 1) ? n - (myData->M - 1) : 0;  //kmin = 0 ou kmin < 512
     kmax = (n < myData->L - 1) ? n : myData->L - 1;					//kmax < 512 ou kmax = 512
 
-		if (n<myData->M-1){
-			//décalage de buffer
-			myData->interBuffer[n] = myData->interBuffer[n+myData->L];
-		}
+		double tmp;
+		tmp = 0;
     for (k = kmin; k <= kmax; k++)
     {
-      myData->interBuffer[n] += ((double*)inputBuffer)[k] * myData->impRep[n - k];
+      tmp  += in[k]* myData->impRep[n - k];
     }
-    if(n<myData->L){
-    	((double*)outputBuffer)[n] = myData->interBuffer[n];
-    	((double*)outputBuffer)[n] = ((double*)inputBuffer)[n];
-    }
+    myData->interBuffer[n] += tmp;
+  }
+  
+  for(n=0; n<myData->L; n++){
+  	out[n] = myData->interBuffer[n];
   }
 }
 
 void convFreq( void *outputBuffer, void *inputBuffer, MyData* myData){
-	
 	
 }
 
@@ -396,7 +404,9 @@ int inout( void *outputBuffer, void *inputBuffer, unsigned int /*nBufferFrames*/
            double /*streamTime*/, RtAudioStreamStatus status, void *data )
 {
 	double time;
-
+	double* in = (double*)inputBuffer;
+	double* out = (double*)outputBuffer;
+	
   time = get_process_time();
   
   // Since the number of input and output channels is equal, we can do
@@ -406,16 +416,19 @@ int inout( void *outputBuffer, void *inputBuffer, unsigned int /*nBufferFrames*/
   MyData* myData = (MyData *) data;
   
 	//nothingDone(outputBuffer, inputBuffer, myData);
-  convTemps(outputBuffer, inputBuffer, myData);
+  convTemps(out, in, myData);
   //convFreq(outputBuffer, inputBuffer, myData);
   
   time = get_process_time()-time;
+  
   if(time > myData->tempsMax){
-  	myData->bufferMax -=500;
+  	/*myData->M -=500;
+  	myData->bufferMax = myData->M+myData->L-1;*/
+  	myData->bufferMax -= 500;
  		printf("Time too long, new bufferSize : %d, ",myData->bufferMax);
   }
   printf("Time : %f\n",time);
-  
+  outputBuffer = out;
   return 0;
 }
 
@@ -447,7 +460,7 @@ int main( int argc, char *argv[] )
   adac.showWarnings( true );
 
   // Set the same number of channels for both input and output.
-  unsigned int bufferFrames = 1024;
+  unsigned int bufferFrames = 128;
   RtAudio::StreamParameters iParams, oParams;
   iParams.deviceId = iDevice;
   iParams.nChannels = channels;
@@ -469,6 +482,7 @@ int main( int argc, char *argv[] )
 	
 	fseek(impRepFile, 0, SEEK_END); // seek to end of file
 	long unsigned int fileSize = ftell(impRepFile)/sizeof(double); // nombre d'elements de la RI
+	
 	fseek(impRepFile, 0, SEEK_SET); // seek back to beginning of file
 	
 	double impRep[fileSize];
@@ -481,7 +495,7 @@ int main( int argc, char *argv[] )
 
 	MyData myData;
 	myData.impRep = impRep;
-	fft(impRep,impRepFreq,myData.fft_m);
+	//fft(impRep,impRepFreq,myData.fft_m);
 	myData.impRepFreq = impRepFreq;
 	myData.M = fileSize;
 	myData.L = bufferFrames;
