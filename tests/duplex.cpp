@@ -418,7 +418,7 @@ void convFreq(double *out, double *in, MyData* myData){
 		}
 		myData->interBufferReal[n] = myData->interBufferReal[n]*myData->impRepReal[n] - myData->interBufferIm[n]*myData->impRepIm[n];
 		myData->interBufferIm[n] = myData->interBufferReal[n]*myData->impRepIm[n] + myData->interBufferIm[n]*myData->impRepReal[n];
-	}
+	} 
 	ifftr(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
 	//for (n=0; n<myData->sizeFFT;n++){
 	for (n=0; n<myData->M + myData->L -1;n++){
