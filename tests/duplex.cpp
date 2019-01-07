@@ -466,7 +466,7 @@ int inout( void *outputBuffer, void *inputBuffer, unsigned int /*nBufferFrames*/
   time = get_process_time()-time;
   
   if(time > myData->tempsMax){
-  	myData->bufferMax -= 500;
+  	myData->bufferMax -= 100;
  		printf("Time too long, new bufferSize : %d, ",myData->bufferMax);
   	printf("Time : %f\n",time);
   }
