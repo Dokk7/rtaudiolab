@@ -49,9 +49,9 @@ double* impRepReal;				//réponse impulsionelle fréquentielle réelle
 double* impRepIm;					//réponse impulsionelle fréquentielle imaginaire
 double* interBufferReal;	//buffer intermédiaire, résultat de la convolution fréquentielle
 double* interBufferIm;		//buffer intermédiaire, résultat de la convolution fréquentielle
-int sizeFFT;						//taille de la fft
+int sizeFFT;							//taille de la fft
 int convChoice;						//0=none, 1=temp, 2=freq
-
+double averageTime;				//temps moyen du calcul
 };
 
 /*****************************************************************************************************/
@@ -401,40 +401,16 @@ void convTemps( double *out, double *in, MyData* myData){
   }
 }
 
-void convFreq2(double *out, double *in, MyData* myData){
-	myData->sizeFFT = get_nextpow2(myData->bufferMax);
-	memcpy(myData->interBufferReal,in,myData->L);
-	fftr(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
-	
-	int n;
-	for (n=0; n<myData->sizeFFT - myData->L;n++){
-		myData->interBuffer[n] = myData->interBuffer[n+myData->L];
-	}
-	for(n=myData->sizeFFT - myData->L;n<myData->sizeFFT;n++){
-		myData->interBuffer[n] = 0;
-	}
-	for (n=0; n<myData->sizeFFT; n++){
-		myData->interBufferReal[n] = myData->interBufferReal[n]*myData->impRepReal[n] + myData->interBufferIm[n]*myData->impRepIm[n];
-		myData->interBufferIm[n] = myData->interBufferReal[n]*myData->impRepIm[n] + myData->interBufferIm[n]*myData->impRepReal[n];
-	}
-	ifft(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
-	for (n=0; n<myData->sizeFFT;n++){
-		myData->interBuffer[n] += myData->interBufferReal[n];
-	}
-	for (n=0; n<myData->L;n++){
-		out[n] = myData->interBuffer[n];
-	}
-} 
-
 void convFreq(double *out, double *in, MyData* myData){
-	memset(myData->interBufferReal, 0, myData->sizeFFT);
-	memset(myData->interBufferIm, 0, myData->sizeFFT);
+	int n;
+	memset(myData->interBufferReal, 0, myData->sizeFFT*sizeof(double));
+	memset(myData->interBufferIm, 0, myData->sizeFFT*sizeof(double));
 	memcpy(myData->interBufferReal,in,myData->L*sizeof(double));
 	fftr(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
 	
-	int n;
 	for (n=0; n<myData->sizeFFT; n++){
-		if (n<myData->sizeFFT - myData->L){
+		//if (n<myData->sizeFFT - myData->L){
+		if (n<myData->M -1){
 			myData->interBuffer[n] = myData->interBuffer[n+myData->L];
 		}
 		else{
@@ -443,8 +419,13 @@ void convFreq(double *out, double *in, MyData* myData){
 		myData->interBufferReal[n] = myData->interBufferReal[n]*myData->impRepReal[n] - myData->interBufferIm[n]*myData->impRepIm[n];
 		myData->interBufferIm[n] = myData->interBufferReal[n]*myData->impRepIm[n] + myData->interBufferIm[n]*myData->impRepReal[n];
 	}
-	ifft(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
-	for (n=0; n<myData->sizeFFT;n++){
+	ifftr(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
+	//for (n=0; n<myData->sizeFFT;n++){
+	for (n=0; n<myData->M + myData->L -1;n++){
+		/*if(n>myData->M + myData->L -1){
+			printf("interBuffer : %f",myData->interBufferReal[n]);
+			printf(" +i %f\n",myData->interBufferIm[n]);
+		}*/
 		myData->interBuffer[n] += myData->interBufferReal[n];
 		if (n<myData->L){
 			out[n] = myData->interBuffer[n];
@@ -489,6 +470,8 @@ int inout( void *outputBuffer, void *inputBuffer, unsigned int /*nBufferFrames*/
  		printf("Time too long, new bufferSize : %d, ",myData->bufferMax);
   	printf("Time : %f\n",time);
   }
+  myData->averageTime = myData->averageTime/2 + time/2;
+  //printf("Time : %f\n",myData->averageTime);
   outputBuffer = out;
   return 0;
 }
@@ -521,7 +504,12 @@ int main( int argc, char *argv[] )
   adac.showWarnings( true );
 
   // Set the same number of channels for both input and output.
-  unsigned int bufferFrames = 512;
+  unsigned int bufferFrames = 0;
+  while(bufferFrames<1 || bufferFrames>100000){
+		printf("Choose input and output buffer size (512 by default) : ");
+		scanf("%d",&bufferFrames);
+		printf("\n\n");
+	}
   RtAudio::StreamParameters iParams, oParams;
   iParams.deviceId = iDevice;
   iParams.nChannels = channels;
@@ -580,23 +568,7 @@ int main( int argc, char *argv[] )
 	myData.fs = fs;
 	myData.impRepReal = impRepReal;
 	myData.impRepIm = impRepIm;
-	
-	int k;
-	printf("impRep : taille %lu [",fileSize);
-	for (k = 0; k<300; k++){
-		printf("%f, ",impRep[k]);
-	}
-	
-	printf("...]\n\nimpRepReal : taille %d [",sizeFFT);
-	for (k = 0; k<300; k++){
-		printf("%f, ",impRepReal[k]);
-	}
-	
-	printf("...]\n\nimpRepIm : taille %d [",sizeFFT);
-	for (k = 0; k<300; k++){
-		printf("%f, ",impRepIm[k]);
-	}
-	printf("...]\n\n");
+	myData.averageTime = 0;
 	
 	double interBuffer[sizeFFT];
 	myData.interBuffer = interBuffer;
