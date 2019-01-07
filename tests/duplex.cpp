@@ -429,7 +429,7 @@ void convFreq2(double *out, double *in, MyData* myData){
 void convFreq(double *out, double *in, MyData* myData){
 	memset(myData->interBufferReal, 0, myData->sizeFFT);
 	memset(myData->interBufferIm, 0, myData->sizeFFT);
-	memcpy(myData->interBufferReal,in,myData->L);
+	memcpy(myData->interBufferReal,in,myData->L*sizeof(double));
 	fftr(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
 	
 	int n;
@@ -446,9 +446,9 @@ void convFreq(double *out, double *in, MyData* myData){
 	ifft(myData->interBufferReal,myData->interBufferIm,myData->sizeFFT);
 	for (n=0; n<myData->sizeFFT;n++){
 		myData->interBuffer[n] += myData->interBufferReal[n];
-	}
-	for (n=0; n<myData->L;n++){
-		out[n] = myData->interBuffer[n];
+		if (n<myData->L){
+			out[n] = myData->interBuffer[n];
+		}
 	}
 }
 
@@ -563,17 +563,16 @@ int main( int argc, char *argv[] )
 	
 	double impRepReal[sizeFFT];
 	double impRepIm[sizeFFT];
-	memcpy(impRepReal,impRep,fileSize);
 	
 	fread(impRep,sizeof(double), fileSize, impRepFile);
 	printf("Taille du fichier %lu\n\n",fileSize);
 	
 	fclose(impRepFile);
-
+	
 	myData.sizeFFT = sizeFFT;
 	myData.impRep = impRep;
-	memcpy(impRepReal, impRep, fileSize);
-	fft(impRepReal,impRepIm,myData.sizeFFT);
+	memcpy(impRepReal, impRep, fileSize*sizeof(double));
+	fftr(impRepReal,impRepIm,myData.sizeFFT);
 	myData.M = fileSize;
 	myData.L = bufferFrames;
 	myData.bufferMax = myData.M+myData.L-1;
@@ -583,17 +582,17 @@ int main( int argc, char *argv[] )
 	myData.impRepIm = impRepIm;
 	
 	int k;
-	printf("impRep : [");
+	printf("impRep : taille %lu [",fileSize);
 	for (k = 0; k<300; k++){
 		printf("%f, ",impRep[k]);
 	}
 	
-	printf("...]\n\nimpRepReal : [");
+	printf("...]\n\nimpRepReal : taille %d [",sizeFFT);
 	for (k = 0; k<300; k++){
 		printf("%f, ",impRepReal[k]);
 	}
 	
-	printf("...]\n\nimpRepIm : [");
+	printf("...]\n\nimpRepIm : taille %d [",sizeFFT);
 	for (k = 0; k<300; k++){
 		printf("%f, ",impRepIm[k]);
 	}
